@@ -1,3 +1,7 @@
+#pragma once
+
+#include <semaphore.h>
+
 #define FILENAME_LENGTH 200
 
 typedef enum { 
@@ -5,6 +9,10 @@ typedef enum {
     true 
 } bool; 
 
+typedef struct trace {
+    char address[9];
+    char action;
+} trace;
 
 typedef struct hash_item {
     char* key;
@@ -27,3 +35,9 @@ void delete_table(hash_table* table);
 void insert_table(hash_table* table, const char* key, const char* value);
 void remove_table(hash_table* table, const char* key);
 bool exists_table(hash_table* table, const char* key);
+
+typedef struct shared_memory {
+    sem_t mutex_0;
+    sem_t mutex_1;
+    trace* trc;
+} shared_memory;

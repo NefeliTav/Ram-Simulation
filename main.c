@@ -2,11 +2,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>            
+#include <semaphore.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <time.h>
 
 int main(int argc, const char** argv) {
     hash_table* table = NULL;
     char algo[6] = {'L', 'R', 'U', 0, 0, 0};
-    int frame = 1, q = 1, max = 0;
+    char q[10] = {0}; q[0] = '1';
+    int frame = 1, max = 0;
+    shared_memory *smemory = NULL;
+    int shmid = -1, status_bzip_worker, status_gcc_worker;
+    pid_t bzip_worker, gcc_worker;
 
     // get command line arguments
     for (int i = 1; i < argc; i+=2) {
@@ -21,19 +31,65 @@ int main(int argc, const char** argv) {
             frame = atoi(argv[i+1]);
         }
         if (strcmp(argv[i], "-q") == 0) {
-            q = atoi(argv[i+1]);
+            strncpy(q, argv[i+1], 9);
         }
         if (strcmp(argv[i], "-max") == 0) {
             max = atoi(argv[i+1]);
         }
     }
-    
+
+    shmid = shmget(IPC_PRIVATE, sizeof(shared_memory), IPC_CREAT | 0666); 
+    if (shmid < 0) {
+        printf("***Shared Memory Failed***\n");
+        return 1;
+    }
+    smemory = shmat(shmid, NULL, 0);                                                 //attach to memory
+    if (smemory < 0) {
+        printf("***Attach Shared Memory Failed***\n");
+        return 1;
+    }
+    //initialize posix semaphores
+    if (sem_init(&smemory->mutex_0, 1, 1) != 0) {
+        printf("***Init Mutex Failed***\n");
+        return 1;
+    }
+    if (sem_init(&smemory->mutex_1, 1, 1) != 0) {
+        printf("***Init Mutex Failed***\n");
+        return 1;
+    }
+
+    if ((bzip_worker = fork()) < 0) {
+        printf("***Fork Failed***\n");
+        return 1;
+    } else if (bzip_worker == 0) {
+        // child process
+        execl("worker", "worker", "-F", "./bzip.trace", "-q", q, (char *)NULL); 
+    }
+
+    if ((gcc_worker = fork()) < 0) {
+        printf("***Fork Failed***\n");
+        return 1;
+    } else if (gcc_worker == 0) {
+        // child process
+        execl("worker", "worker", "-F", "./gcc.trace", "-q", q, (char *)NULL); 
+    }
+
     table = create_table(2);
-    insert_table(table, "hello", "world");
-    insert_table(table, "hello2", "world");
-    insert_table(table, "hello3", "world");
-    remove_table(table, "hello");
+
     delete_table(table);
+
+    do {
+        //wait for children to finish
+        if (waitpid(bzip_worker, &status_bzip_worker, WUNTRACED | WCONTINUED) == -1) {
+            return -1;
+        }
+        if (waitpid(gcc_worker, &status_gcc_worker, WUNTRACED | WCONTINUED) == -1) {
+            return -1;
+        }
+    } while (   
+                !WIFEXITED(status_bzip_worker) && !WIFSIGNALED(status_bzip_worker) && 
+                !WIFEXITED(status_gcc_worker) && !WIFSIGNALED(status_gcc_worker)
+            );
 
     return 0;
 }

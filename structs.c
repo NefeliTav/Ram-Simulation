@@ -1,9 +1,13 @@
 #include "structs.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-// temp
-#include <stdio.h>
+#include <sys/wait.h>
+#include <unistd.h>            
+#include <semaphore.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <time.h>
 
 int _hash(const char *str, const int capacity);
 void _delete_list(hash_list* list);
