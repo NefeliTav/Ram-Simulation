@@ -1,3 +1,11 @@
+#define FILENAME_LENGTH 200
+
+typedef enum { 
+    false, 
+    true 
+} bool; 
+
+
 typedef struct hash_item {
     char* key;
     char* value;
@@ -18,3 +26,4 @@ void delete_table(hash_table* table);
 
 void insert_table(hash_table* table, const char* key, const char* value);
 void remove_table(hash_table* table, const char* key);
+bool exists_table(hash_table* table, const char* key);

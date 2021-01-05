@@ -113,6 +113,18 @@ void remove_table(hash_table* table, const char* key) {
     // not found
 }
 
+bool exists_table(hash_table* table, const char* key) {
+    const int pos = _hash(key, table->capacity);
+    hash_list* list = &table->table[pos];
+    if (list->item.key == NULL) {
+        return false;
+    }
+    while (strcmp(key, list->item.key) != 0 && list->next != NULL) {
+        list = list->next;
+    }
+    return strcmp(key, list->item.key) == 0 ? true : false;
+}
+
 /* private functions */
 
 int _hash(const char *str, const int capacity) {
