@@ -5,8 +5,8 @@
 // temp
 #include <stdio.h>
 
-int hash(const char *str, const int capacity);
-void delete_list(hash_list* list);
+int _hash(const char *str, const int capacity);
+void _delete_list(hash_list* list);
 
 hash_table* create_table(int capacity) {
     hash_table* hs = malloc(sizeof(hash_table));
@@ -23,7 +23,7 @@ hash_table* create_table(int capacity) {
 void delete_table(hash_table* table) {
     for (int i = 0; i < table->capacity; i++) {
         if (table->table[i].next != NULL) {
-            delete_list(table->table[i].next);
+            _delete_list(table->table[i].next);
         }
         if (table->table[i].item.key != NULL) {
             free(table->table[i].item.key);
@@ -37,7 +37,7 @@ void delete_table(hash_table* table) {
 }
 
 void insert_table(hash_table* table, const char* key, const char* value) {
-    const int pos = hash(key, table->capacity);
+    const int pos = _hash(key, table->capacity);
     hash_list* list = &table->table[pos];
     if (list->item.key == NULL || list->item.value == NULL) {
         list->next = NULL;
@@ -59,13 +59,63 @@ void insert_table(hash_table* table, const char* key, const char* value) {
     }
 }
 
-void remove_table(hash_table* table, const char* key, const char* value) {
+void remove_table(hash_table* table, const char* key) {
+    const int pos = _hash(key, table->capacity);
+    hash_list* list = &table->table[pos], *prev = NULL;
+    if (list->item.key != NULL && list->item.value != NULL) {
+        // if it's in the list head
+        if (strcmp(key, list->item.key) == 0) {
+            if (list->next == NULL) {
+                // if there is no next, we can just free key and value
+                free(list->item.key);
+                list->item.key = NULL;
+                free(list->item.value);
+                list->item.value = NULL;
+            } else {
+                // else we copy data from the second position to head 
+                // and then free the second position
+                list = table->table[pos].next;
+                free(table->table[pos].item.key);
+                table->table[pos].item.key = NULL;
+                free(table->table[pos].item.value);
+                table->table[pos].item.value = NULL;
+                // could just realloc
+                table->table[pos].item.key = malloc(sizeof(char)*(strlen(list->item.key) + 1));
+                table->table[pos].item.value = malloc(sizeof(char)*(strlen(list->item.value) + 1));
+                strcpy(table->table[pos].item.key, list->item.key);
+                strcpy(table->table[pos].item.value, list->item.value);
+                table->table[pos].next = list->next;
 
+                free(list->item.key);
+                list->item.key = NULL;
+                free(list->item.value);
+                list->item.value = NULL;
+                free(list);
+                list = NULL;
+            }
+            return;
+        }
+    }
+    prev = list;
+    while (strcmp(key, list->item.key) != 0 && list->next != NULL) {
+        prev = list;
+        list = list->next;
+    }
+    if (strcmp(key, list->item.key) == 0) {
+        free(list->item.key);
+        list->item.key = NULL;
+        free(list->item.value);
+        list->item.value = NULL;
+        prev->next = list->next;
+        free(list);
+        list = NULL;
+    }
+    // not found
 }
 
 /* private functions */
 
-int hash(const char *str, const int capacity) {
+int _hash(const char *str, const int capacity) {
     // https://stackoverflow.com/a/7666577/11155628
     unsigned long hash = 7027;
     int c;
@@ -73,16 +123,15 @@ int hash(const char *str, const int capacity) {
     while (c = *str++) {
         hash = ((hash << 5) + hash) + c;
     }
-
     return (int)(hash % capacity);
 }
 
-void delete_list(hash_list* list) {
+void _delete_list(hash_list* list) {
     if (list == NULL) {
         return;
     }
     if (list->next != NULL) {
-        delete_list(list->next);
+        _delete_list(list->next);
     }
     if (list->item.key != NULL) {
         free(list->item.key);

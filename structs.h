@@ -17,4 +17,4 @@ hash_table* create_table(int capacity);
 void delete_table(hash_table* table);
 
 void insert_table(hash_table* table, const char* key, const char* value);
-void remove_table(hash_table* table, const char* key, const char* value);
+void remove_table(hash_table* table, const char* key);

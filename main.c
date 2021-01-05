@@ -28,10 +28,11 @@ int main(int argc, const char** argv) {
         }
     }
     
-    table = create_table(10);
+    table = create_table(2);
     insert_table(table, "hello", "world");
     insert_table(table, "hello2", "world");
-    insert_table(table, "hello", "world");
+    insert_table(table, "hello3", "world");
+    remove_table(table, "hello");
     delete_table(table);
 
     return 0;
