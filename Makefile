@@ -25,4 +25,8 @@ clean:
 	rm -f $(OBJS) $(OUT) worker
 
 run: $(OUT)
-	./$(OUT)
+	./$(OUT) -q 1000 -max 10000
+
+valgrind: $(OUT)
+	valgrind --leak-check=full --show-leak-kinds=all ./$(OUT) -q 1000 -max 10000
+	

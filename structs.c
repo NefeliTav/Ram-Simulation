@@ -9,14 +9,16 @@
 #include <sys/shm.h>
 #include <time.h>
 
-int _hash(const char *str, const int capacity);
+int _hash(const char *str, const int size);
 void _delete_list(hash_list* list);
 
-hash_table* create_table(int capacity) {
+hash_table* create_table(int size, int capacity) {
     hash_table* hs = malloc(sizeof(hash_table));
+    hs->size = size;
     hs->capacity = capacity;
-    hs->table = malloc(sizeof(hash_list)*capacity);
-    for (int i = 0; i < capacity; i++) {
+    hs->length = 0;
+    hs->table = malloc(sizeof(hash_list)*size);
+    for (int i = 0; i < size; i++) {
         hs->table[i].next = NULL;
         hs->table[i].item.key = NULL;
         hs->table[i].item.value = NULL;
@@ -25,7 +27,7 @@ hash_table* create_table(int capacity) {
 }
 
 void delete_table(hash_table* table) {
-    for (int i = 0; i < table->capacity; i++) {
+    for (int i = 0; i < table->size; i++) {
         if (table->table[i].next != NULL) {
             _delete_list(table->table[i].next);
         }
@@ -41,7 +43,13 @@ void delete_table(hash_table* table) {
 }
 
 void insert_table(hash_table* table, const char* key, const char* value) {
-    const int pos = _hash(key, table->capacity);
+    if (exists_table(table, key) == true) {
+        return;
+    }
+    if (table->length == table->capacity) {
+        // remove one 
+    }
+    const int pos = _hash(key, table->size);
     hash_list* list = &table->table[pos];
     if (list->item.key == NULL || list->item.value == NULL) {
         list->next = NULL;
@@ -49,6 +57,7 @@ void insert_table(hash_table* table, const char* key, const char* value) {
         list->item.value = malloc(sizeof(char)*(strlen(value) + 1));
         strcpy(list->item.key, key);
         strcpy(list->item.value, value);
+        table->length++;
     } else {
         while (list->next != NULL) {
             list = list->next;
@@ -60,11 +69,12 @@ void insert_table(hash_table* table, const char* key, const char* value) {
         list->item.value = malloc(sizeof(char)*(strlen(value) + 1));
         strcpy(list->item.key, key);
         strcpy(list->item.value, value);
+        table->length++;
     }
 }
 
 void remove_table(hash_table* table, const char* key) {
-    const int pos = _hash(key, table->capacity);
+    const int pos = _hash(key, table->size);
     hash_list* list = &table->table[pos], *prev = NULL;
     if (list->item.key != NULL && list->item.value != NULL) {
         // if it's in the list head
@@ -97,6 +107,7 @@ void remove_table(hash_table* table, const char* key) {
                 free(list);
                 list = NULL;
             }
+            table->length++;
             return;
         }
     }
@@ -113,12 +124,13 @@ void remove_table(hash_table* table, const char* key) {
         prev->next = list->next;
         free(list);
         list = NULL;
+        table->length++;
     }
     // not found
 }
 
 bool exists_table(hash_table* table, const char* key) {
-    const int pos = _hash(key, table->capacity);
+    const int pos = _hash(key, table->size);
     hash_list* list = &table->table[pos];
     if (list->item.key == NULL) {
         return false;
@@ -131,7 +143,7 @@ bool exists_table(hash_table* table, const char* key) {
 
 /* private functions */
 
-int _hash(const char *str, const int capacity) {
+int _hash(const char *str, const int size) {
     // https://stackoverflow.com/a/7666577/11155628
     unsigned long hash = 7027;
     int c;
@@ -139,7 +151,7 @@ int _hash(const char *str, const int capacity) {
     while (c = *str++) {
         hash = ((hash << 5) + hash) + c;
     }
-    return (int)(hash % capacity);
+    return (int)(hash % size);
 }
 
 void _delete_list(hash_list* list) {

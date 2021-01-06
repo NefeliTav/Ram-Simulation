@@ -10,8 +10,8 @@ typedef enum {
 } bool; 
 
 typedef struct trace {
-    char address[9];
-    char action;
+    char address[8];
+    char action[8];
 } trace;
 
 typedef struct hash_item {
@@ -25,11 +25,13 @@ typedef struct hash_list {
 } hash_list;
 
 typedef struct hash_table {
-    int capacity; // how many hash_lists
+    int size; // how many hash_lists
+    int capacity; // How many pages memory can fit (number of frames)
+    int length; // How many pages inside the memory
     hash_list* table;   // array of linked lists
 } hash_table;
 
-hash_table* create_table(int capacity);
+hash_table* create_table(int size, int capacity);
 void delete_table(hash_table* table);
 
 void insert_table(hash_table* table, const char* key, const char* value);
@@ -39,5 +41,6 @@ bool exists_table(hash_table* table, const char* key);
 typedef struct shared_memory {
     sem_t mutex_0;
     sem_t mutex_1;
-    trace* trc;
+    sem_t read;
+    sem_t can_write;
 } shared_memory;
