@@ -11,7 +11,7 @@
 
 int main(int argc, const char** argv) {
     hash_table* table = NULL;
-    char algo[6] = {'L', 'R', 'U', 0, 0, 0};
+    char algo[6] = {'L', 'R', 'U', 0, 0, 0}, shmid_str[30] = {0};
     char q[10] = {0}; q[0] = '1';
     int frame = 1, max = 0;
     shared_memory *smemory = NULL;
@@ -53,17 +53,17 @@ int main(int argc, const char** argv) {
         printf("***Init Mutex Failed***\n");
         return 1;
     }
-    if (sem_init(&smemory->mutex_1, 1, 1) != 0) {
+    if (sem_init(&smemory->mutex_1, 1, 0) != 0) {
         printf("***Init Mutex Failed***\n");
         return 1;
     }
-
+    sprintf(shmid_str, "%d", shmid); 
     if ((bzip_worker = fork()) < 0) {
         printf("***Fork Failed***\n");
         return 1;
     } else if (bzip_worker == 0) {
         // child process
-        execl("worker", "worker", "-F", "./bzip.trace", "-q", q, (char *)NULL); 
+        execl("worker", "worker", "-F", "./bzip.trace", "-q", q, "-s", shmid_str, "-start", "true", (char *)NULL); 
     }
 
     if ((gcc_worker = fork()) < 0) {
@@ -71,7 +71,7 @@ int main(int argc, const char** argv) {
         return 1;
     } else if (gcc_worker == 0) {
         // child process
-        execl("worker", "worker", "-F", "./gcc.trace", "-q", q, (char *)NULL); 
+        execl("worker", "worker", "-F", "./gcc.trace", "-q", q, "-s", shmid_str, "-start", "false", (char *)NULL); 
     }
 
     table = create_table(2);
