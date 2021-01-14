@@ -59,13 +59,18 @@ void insert_table(hash_table* table, const char* key, int frame, char action) {
     }
 }
 
-void remove_table(hash_table* table, const char* key) {
+// return true if we need to write to disk
+bool remove_table(hash_table* table, const char* key) {
     const int pos = _hash(key, table->size);
+    bool rtn = false;
     hash_list* list = &table->table[pos], *prev = NULL;
     if (list->item.key != NULL) {
         // if it's in the list head
         if (strcmp(key, list->item.key) == 0) {
             if (list->next == NULL) {
+                if (list->item.action == 'W' ) {
+                    rtn = true;
+                }
                 // if there is no next, we can just free key
                 free(list->item.key);
                 list->item.key = NULL;
@@ -81,13 +86,15 @@ void remove_table(hash_table* table, const char* key) {
                 table->table[pos].item.frame = list->item.frame;
                 table->table[pos].item.action = list->item.action;
                 table->table[pos].next = list->next;
-
+                if (list->item.action == 'W' ) {
+                    rtn = true;
+                }
                 free(list->item.key);
                 list->item.key = NULL;
                 free(list);
                 list = NULL;
             }
-            return;
+            return rtn;
         }
     }
     prev = list;
@@ -96,6 +103,9 @@ void remove_table(hash_table* table, const char* key) {
         list = list->next;
     }
     if (list->item.key != NULL && strcmp(key, list->item.key) == 0) {
+        if (list->item.action == 'W' ) {
+            rtn = true;
+        }
         free(list->item.key);
         list->item.key = NULL;
         prev->next = list->next;
@@ -103,6 +113,7 @@ void remove_table(hash_table* table, const char* key) {
         list = NULL;
     }
     // not found
+    return -1;
 }
 
 bool exists_table(hash_table* table, const char* key) {
@@ -115,6 +126,21 @@ bool exists_table(hash_table* table, const char* key) {
         list = list->next;
     }
     return strcmp(key, list->item.key) == 0 ? true : false;
+}
+
+hash_item* get_table(hash_table* table, const char* key) {
+    const int pos = _hash(key, table->size);
+    hash_list* list = &table->table[pos];
+    if (list->item.key == NULL) {
+        return NULL;
+    }
+    while (strcmp(key, list->item.key) != 0 && list->next != NULL) {
+        list = list->next;
+    }
+    if (strcmp(key, list->item.key) == 0) {
+        return &list->item;
+    }
+    return NULL;
 }
 
 /* private functions */

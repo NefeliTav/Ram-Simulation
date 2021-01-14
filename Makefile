@@ -5,7 +5,7 @@ OUT	= main
 CC	 = gcc
 FLAGS	 = -g -c # -Wall
 LFLAGS	 = -lpthread
-ARGS 	 = -q 113 -f 5 # -max 10000000
+ARGS 	 = -q 314 -f 10 -a schance  # -max 10000000
 
 all: $(OBJS) worker
 	$(CC) -g $(OBJS) -o $(OUT) $(LFLAGS)
@@ -29,5 +29,6 @@ run: $(OUT)
 	./$(OUT) $(ARGS)
 
 valgrind: $(OUT)
-	valgrind --leak-check=full --show-leak-kinds=all ./$(OUT) $(ARGS)
+	valgrind --trace-children=yes --leak-check=full --show-leak-kinds=all ./$(OUT) $(ARGS)
+	# add full path to workers
 	
