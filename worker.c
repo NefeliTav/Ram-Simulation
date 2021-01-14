@@ -8,22 +8,33 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <time.h>
+//#define DEBUG
+
+#if defined(DEBUG)
+// for debugging this is public
+char filename[FILENAME_LENGTH] = {0};
+#endif
 
 int add_frame(char* array, unsigned int size, const char* page);
 int remove_page(const char* algo, char* array, unsigned int size, hash_table* table, char* removed, int removed_size, char* stack, int stack_size, const char* page);
 void stack_push(char* stack, int size, char* page);
 void stack_pop(char* stack, int size, char* str);
+int lines_in_file(const char* filen);
 
 int main(int argc, const char** argv) {
     FILE* fp;
     char* line = NULL;
     size_t len = 0, read;
-    char addr[9], tmp[2], filename[FILENAME_LENGTH] = {0}, page_num[6] = {0}, offset[4] = {0};
-    int q = 1, shmid = -1, max = 10;
+    char addr[9], tmp[2], page_num[6] = {0}, offset[4] = {0};
+    int q = 1, shmid = -1, max = 1000000;
     shared_memory *smemory = NULL;
     bool start = -1;
+    int lines_max = max;
     sem_t *me = NULL, *them = NULL;
     hash_table* table = NULL;
+    #if !defined(DEBUG)
+    char filename[FILENAME_LENGTH] = {0};
+    #endif
 
     for (int i = 1; i < argc; i+=2) {
         if (strcmp(argv[i], "-F") == 0) {
@@ -38,7 +49,9 @@ int main(int argc, const char** argv) {
             }
         }
         else if (strcmp(argv[i], "-max") == 0) {
-            max = atoi(argv[i+1]);
+            if (atoi(argv[i+1]) > 0){
+                max = atoi(argv[i+1]);
+            }
         }
         else if (strcmp(argv[i], "-q") == 0) {
             q = atoi(argv[i+1]);
@@ -47,6 +60,12 @@ int main(int argc, const char** argv) {
             shmid = atoi(argv[i + 1]);
         }
     }
+    // to print progress
+    lines_max = lines_in_file(filename);
+    if (max < lines_max) {
+        lines_max = max;
+    }
+
     if (start == -1) {
         printf("Please provide a boolean indicator for the first and second process \
             using the '-start' flag, (eg. -start true, -start false)\n");
@@ -71,13 +90,13 @@ int main(int argc, const char** argv) {
         return 1;
     }
     char* pages_removed = NULL;
-    pages_removed = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*PAGE_NAME*smemory->frames);
+    pages_removed = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*(PAGE_NAME+1)*smemory->frames);
     if (pages_removed == NULL) {
         printf("***Pages_removed array not created***\n");
         return 1;
     }
     char* stack = NULL;
-    stack = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*PAGE_NAME*smemory->frames +sizeof(char)*PAGE_NAME*q);
+    stack = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*(PAGE_NAME+1)*smemory->frames +sizeof(char)*(PAGE_NAME+1)*q);
     if (stack == NULL) {
         printf("***stack not created***\n");
         return 1;
@@ -91,33 +110,38 @@ int main(int argc, const char** argv) {
         printf("Could not open file. (%s)\n", filename);
         return 1;
     }
-    /*if (start == true) {
+    if (start == true) {
         me = &(smemory->mutex_0);
         them = &(smemory->mutex_1);
     } else if (start == false) {
         me = &(smemory->mutex_1);
         them = &(smemory->mutex_0);
-    }*/
+    }
     table =  create_table(smemory->frames);
 
     int i = 0;
+    int count = 0;
     // divide 2 so that we read max/2 from each file = max
     max /= 2;
     while ((read = getline(&line, &len, fp)) != -1) {
+        printf("%s: %d/%d\n", filename, count, lines_max);
         if (i >= q || max <= 0) {
             i = 0;
             // memcpy(smemory->trc, trc, sizeof(trace)*q);
             // sem_post(&(smemory->read));
             // sem_post(them);
-            sem_post(&smemory->edit_frames);
+            sem_post(them);
 
             if (max <= 0) {
                 break;
             }
         }
         if (i == 0) {
-            sem_wait(&smemory->edit_frames);
+            sem_wait(me);
+            #if defined(DEBUG)
             printf("%s\n", filename);
+            sleep(0.5);
+            #endif
             if (pages_removed[0] != 0) {
                 // Some of my pages were removed
                 char str[PAGE_NAME] = {0};
@@ -137,7 +161,10 @@ int main(int argc, const char** argv) {
         // get page number and offset
         strncpy(page_num, addr, 5);
         strncpy(offset, addr+5, 3);
-        // printf("%s: %s%s %c\n", filename, page_num, offset, tmp[0]);
+        printf("%s: %s%s %c\n", filename, page_num, offset, tmp[0]);
+        #if defined(DEBUG)
+        printf("%s: %s%s %c\n", filename, page_num, offset, tmp[0]);
+        #endif
         if (exists_table(table, page_num)) {
             // do nothing ?!
         } else {
@@ -156,9 +183,10 @@ int main(int argc, const char** argv) {
             line = NULL;
         }
         i++;
+        count++;
         max--;
     }
-    //sem_post(them);
+    sem_post(them);
     delete_table(table);
     fclose(fp);
     if (line) {
@@ -242,19 +270,6 @@ void stack_push(char* stack, int size, char* page) {
                    
         // page_faults++;
     }
-    // print
-    if (false) {
-        printf("STACK: ");
-        for (int j = 0; j < size; j++) {
-            char temp_addr[PAGE_NAME] = {0};
-            strncpy(temp_addr, (char*)stack + PAGE_NAME*j, PAGE_NAME-1);
-            if (temp_addr[0] == 0) {
-                break;
-            }
-            printf("%s ", temp_addr);
-        }
-        printf("\n");
-    }
 }
 
 int remove_page(const char* algo, char* array, unsigned int size, hash_table* table, char* removed, int removed_size, char* stack, int stack_size, const char* page) {
@@ -262,45 +277,70 @@ int remove_page(const char* algo, char* array, unsigned int size, hash_table* ta
     int page_num = -1;
     if (strcmp(algo, "LRU") == 0) {
         // test remove first
-        printf("STACK: ");
-        for (int j = 0; j < stack_size; j++) {
-            char temp_addr[PAGE_NAME] = {0};
-            strncpy(temp_addr, (char*)stack + PAGE_NAME*j, PAGE_NAME-1);
-            if (temp_addr[0] == 0) {
-                break;
+        #if defined(DEBUG)
+            printf("(%s) STACK: ", filename);
+            for (int j = 0; j < stack_size; j++) {
+                char temp_addr[PAGE_NAME] = {0};
+                strncpy(temp_addr, (char*)stack + PAGE_NAME*j, PAGE_NAME-1);
+                if (temp_addr[0] == 0) {
+                    break;
+                }
+                printf("%s ", temp_addr);
             }
-            printf("%s ", temp_addr);
-        }
-        printf("\n");
+            printf("\n");
+        #endif
         stack_pop(stack, stack_size, page_to_remove);
         if (page_to_remove[0] == 0) {
             printf("You should not be here...\n");
         }
-        // printf("REMOVE: %s\n", page_to_remove);
-        // printf("~~~~~~~~~~~~~~~\n");
-        for (int i = 0; i < size; i++) {
-            // printf("(%s__%s)\n", page_to_remove, &array[i*PAGE_NAME]);
-            if (strncmp(page_to_remove, &array[i*PAGE_NAME], PAGE_NAME-1) == 0) {
-                page_num = i;
-                break;
-            }
-        }
-        // printf("\n");
-        if (page_num < 0) {
-            printf("ERROR: %s Page not found in main memory\n", page_to_remove);
-            exit(-1);
-        }
-        // printf("PAGE TO REMOVE: %s\n", page_to_remove);
-        if (exists_table(table, page_to_remove)) {
-            remove_table(table, page_to_remove);
-        } else {
-            //printf("The other guy should remove!\n");
-            stack_push(removed, removed_size, page_to_remove);
-        }
-        strcpy(&array[page_num*PAGE_NAME], page);
-        return page_num;
+        #if defined(DEBUG)
+        printf("REMOVE: %s\n", page_to_remove);
+        printf("~~~~~~~~~~~~~~~\n");
+        #endif
+    } else if (strcmp(algo, "clock") == 0) {
+        
     } else {
         printf("ERROR: %s\n", algo);
         exit(-1);
     }
+    for (int i = 0; i < size; i++) {
+        #if defined(DEBUG)
+        printf("(%s__%s)\n", page_to_remove, &array[i*PAGE_NAME]);
+        #endif
+        if (strncmp(page_to_remove, &array[i*PAGE_NAME], PAGE_NAME-1) == 0) {
+            page_num = i;
+            break;
+        }
+    }
+    #if defined(DEBUG)
+    printf("\n");
+    #endif
+    if (page_num < 0) {
+        printf("ERROR: %s Page not found in main memory\n", page_to_remove);
+        exit(-1);
+    }
+    if (exists_table(table, page_to_remove)) {
+        remove_table(table, page_to_remove);
+    } else {
+        stack_push(removed, removed_size, page_to_remove);
+    }
+    strcpy(&array[page_num*PAGE_NAME], page);
+    return page_num;
+}
+
+int lines_in_file(const char* filen) {
+    FILE *fp = fopen(filen, "r");
+    int count = 0;
+    char c;
+
+    if (fp == NULL) { 
+        return 0; 
+    }
+    for (c = getc(fp); c != EOF; c = getc(fp)) {
+        if (c == '\n') {
+            count = count + 1;
+        }
+    }
+    fclose(fp);
+    return count;
 }

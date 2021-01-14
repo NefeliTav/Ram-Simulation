@@ -12,8 +12,9 @@
 int main(int argc, const char** argv) {
     char algo[6] = {'L', 'R', 'U', 0, 0, 0}, shmid_str[30] = {0};
     char q[10] = {0}; q[0] = '1';
-    char max[10] = {0}; max[0] = '9';
-    int _max = 9;
+    char max[10] = {0};
+    strcpy(max, "-1");
+    int _max = -1;
     int frame = 5;
     shared_memory *smemory = NULL;
     int shmid = -1, status_bzip_worker, status_gcc_worker;
@@ -44,7 +45,7 @@ int main(int argc, const char** argv) {
     // sizeof(char)*5*frame => sizeof(char)*5 = size of page_num, to get what frames are in main memory
     // sizeof(char)*9*atoi(q) => sizeof(char)*PAGE_NAME = size of page_num, allocate q of these since in each iteration the max amount of traces added is q
     // sizeof(char)*PAGE_NAME*frame => LRU stack
-    shmid = shmget(IPC_PRIVATE, sizeof(shared_memory) + sizeof(char)*PAGE_NAME*frame + sizeof(char)*PAGE_NAME*atoi(q) + sizeof(char)*PAGE_NAME*frame, IPC_CREAT | 0666); 
+    shmid = shmget(IPC_PRIVATE, sizeof(shared_memory) + sizeof(char)*(PAGE_NAME+1)*frame + sizeof(char)*(PAGE_NAME+1)*atoi(q) + sizeof(char)*(PAGE_NAME+1)*frame, IPC_CREAT | 0666); 
     if (shmid < 0) {
         printf("***Shared Memory Failed***\n");
         return 1;
@@ -66,29 +67,33 @@ int main(int argc, const char** argv) {
         return 1;
     }
     // all empty
-    memset(frames_array, 0,  sizeof(char)*PAGE_NAME*frame);
+    memset(frames_array, 0,  sizeof(char)*(PAGE_NAME+1)*frame);
 
     char* pages_removed = NULL;
-    pages_removed = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*PAGE_NAME*frame);
+    pages_removed = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*(PAGE_NAME+1)*frame);
     if (pages_removed == NULL) {
         printf("***Pages_removed array not created***\n");
         return 1;
     }
     // all empty
-    memset(pages_removed, 0,  sizeof(char)*PAGE_NAME*atoi(q));
+    memset(pages_removed, 0,  sizeof(char)*(PAGE_NAME+1)*atoi(q));
 
     char* stack = NULL;
-    stack = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*PAGE_NAME* frame +sizeof(char)*PAGE_NAME*atoi(q));
+    stack = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*(PAGE_NAME+1)* frame +sizeof(char)*(PAGE_NAME+1)*atoi(q));
     if (stack == NULL) {
         printf("***stack not created***\n");
         return 1;
     }
     // all empty
-    memset(stack, 0,  sizeof(char)*PAGE_NAME*frame);
+    memset(stack, 0,  sizeof(char)*(PAGE_NAME+1)*frame);
 
     //initialize posix semaphores
-    if (sem_init(&smemory->edit_frames, 1, 1) != 0) {
-        printf("***Init Mutex Failed (edit_frames)***\n");
+    if (sem_init(&smemory->mutex_0, 1, 1) != 0) {
+        printf("***Init Mutex Failed***\n");
+        return 1;
+    }
+    if (sem_init(&smemory->mutex_1, 1, 0) != 0) {
+        printf("***Init Mutex Failed***\n");
         return 1;
     }
     
@@ -215,8 +220,12 @@ int main(int argc, const char** argv) {
             );
 
     //destroy semaphores
-    if (sem_destroy(&smemory->edit_frames) != 0) {
-        printf("***Destroy Mutex Failed (edit_frames)***\n");
+    if (sem_destroy(&smemory->mutex_0) != 0) {
+        printf("***Destroy Mutex Failed (mutex_0)***\n");
+        return 1;
+    }
+    if (sem_destroy(&smemory->mutex_1) != 0) {
+        printf("***Destroy Mutex Failed (mutex_1)***\n");
         return 1;
     }
    

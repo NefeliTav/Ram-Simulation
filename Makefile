@@ -5,7 +5,7 @@ OUT	= main
 CC	 = gcc
 FLAGS	 = -g -c # -Wall
 LFLAGS	 = -lpthread
-ARGS 	 = -q 113 -f 5 -max 1000000
+ARGS 	 = -q 113 -f 5 # -max 10000000
 
 all: $(OBJS) worker
 	$(CC) -g $(OBJS) -o $(OUT) $(LFLAGS)

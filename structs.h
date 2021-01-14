@@ -35,5 +35,6 @@ bool exists_table(hash_table* table, const char* key);
 
 typedef struct shared_memory {
     unsigned int frames;
-    sem_t edit_frames;
+    sem_t mutex_0;
+    sem_t mutex_1;
 } shared_memory;
