@@ -5,6 +5,7 @@ OUT	= main
 CC	 = gcc
 FLAGS	 = -g -c # -Wall
 LFLAGS	 = -lpthread
+ARGS 	 = -q 113 -f 5 -max 1000000
 
 all: $(OBJS) worker
 	$(CC) -g $(OBJS) -o $(OUT) $(LFLAGS)
@@ -22,11 +23,11 @@ worker: worker.o
 	$(CC) -g worker.o structs.o -o worker $(LFLAGS)
 
 clean:
-	rm -f $(OBJS) $(OUT) worker
+	rm -f $(OBJS) $(OUT) worker *.o
 
 run: $(OUT)
-	./$(OUT) -q 1000 -max 10000
+	./$(OUT) $(ARGS)
 
 valgrind: $(OUT)
-	valgrind --leak-check=full --show-leak-kinds=all ./$(OUT) -q 1000 -max 10000
+	valgrind --leak-check=full --show-leak-kinds=all ./$(OUT) $(ARGS)
 	

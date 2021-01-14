@@ -9,10 +9,7 @@
 #include <sys/shm.h>
 #include <time.h>
 
-#define HT_SIZE 10
-
 int main(int argc, const char** argv) {
-    hash_table* table = NULL;
     char algo[6] = {'L', 'R', 'U', 0, 0, 0}, shmid_str[30] = {0};
     char q[10] = {0}; q[0] = '1';
     char max[10] = {0}; max[0] = '9';
@@ -21,8 +18,6 @@ int main(int argc, const char** argv) {
     shared_memory *smemory = NULL;
     int shmid = -1, status_bzip_worker, status_gcc_worker;
     pid_t bzip_worker, gcc_worker;
-    trace* trc = NULL;
-    char* indexes = NULL;
     unsigned int reads = 0, writes = 0, page_faults = 0;
 
     // get command line arguments
@@ -45,45 +40,59 @@ int main(int argc, const char** argv) {
             _max = atoi(max);
         }
     }
-    shmid = shmget(IPC_PRIVATE, sizeof(shared_memory) + sizeof(trace)*atoi(q), IPC_CREAT | 0666); 
+    // shared_memory
+    // sizeof(char)*5*frame => sizeof(char)*5 = size of page_num, to get what frames are in main memory
+    // sizeof(char)*9*atoi(q) => sizeof(char)*PAGE_NAME = size of page_num, allocate q of these since in each iteration the max amount of traces added is q
+    // sizeof(char)*PAGE_NAME*frame => LRU stack
+    shmid = shmget(IPC_PRIVATE, sizeof(shared_memory) + sizeof(char)*PAGE_NAME*frame + sizeof(char)*PAGE_NAME*atoi(q) + sizeof(char)*PAGE_NAME*frame, IPC_CREAT | 0666); 
     if (shmid < 0) {
         printf("***Shared Memory Failed***\n");
         return 1;
     }
+
     //attach to memory
     smemory = shmat(shmid, (void*)0, 0);
     if (smemory < 0) {
         printf("***Attach Shared Memory Failed***\n");
         return 1;
     }
+    smemory->frames = frame;
 
+    char* frames_array = NULL;
     // casting to char* so it is easier to get the offset right
-    trc = (trace*)((char*)smemory + sizeof(shared_memory));
-    if (trc == NULL) {
-        printf("***Trace array not created***\n");
+    frames_array = (char*)((char*)smemory + sizeof(shared_memory));
+    if (frames_array == NULL) {
+        printf("***Frames array not created***\n");
         return 1;
     }
-    
+    // all empty
+    memset(frames_array, 0,  sizeof(char)*PAGE_NAME*frame);
+
+    char* pages_removed = NULL;
+    pages_removed = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*PAGE_NAME*frame);
+    if (pages_removed == NULL) {
+        printf("***Pages_removed array not created***\n");
+        return 1;
+    }
+    // all empty
+    memset(pages_removed, 0,  sizeof(char)*PAGE_NAME*atoi(q));
+
+    char* stack = NULL;
+    stack = (char*)((char*)smemory + sizeof(shared_memory)  + sizeof(char)*PAGE_NAME* frame +sizeof(char)*PAGE_NAME*atoi(q));
+    if (stack == NULL) {
+        printf("***stack not created***\n");
+        return 1;
+    }
+    // all empty
+    memset(stack, 0,  sizeof(char)*PAGE_NAME*frame);
+
     //initialize posix semaphores
-    if (sem_init(&smemory->mutex_0, 1, 1) != 0) {
-        printf("***Init Mutex Failed***\n");
-        return 1;
-    }
-    if (sem_init(&smemory->mutex_1, 1, 0) != 0) {
-        printf("***Init Mutex Failed***\n");
-        return 1;
-    }
-    if (sem_init(&smemory->read, 1, 0) != 0) {
-        printf("***Init Mutex Failed***\n");
-        return 1;
-    }
-    if (sem_init(&smemory->can_write, 1, 0) != 0) {
-        printf("***Init Mutex Failed***\n");
+    if (sem_init(&smemory->edit_frames, 1, 1) != 0) {
+        printf("***Init Mutex Failed (edit_frames)***\n");
         return 1;
     }
     
     sprintf(shmid_str, "%d", shmid);
-    table = create_table(HT_SIZE, frame);
 
     if ((bzip_worker = fork()) < 0) {
         printf("***Fork Failed***\n");
@@ -101,7 +110,7 @@ int main(int argc, const char** argv) {
         execl("worker", "worker", "-F", "./gcc.trace", "-q", q, "-s", shmid_str, "-start", "false", "-max", max, (char *)NULL); 
     }
 
-    
+    /*
     if (strcmp(algo, "LRU") == 0) {
         // 1D array so we can memset
         indexes = malloc(11*table->capacity);
@@ -118,7 +127,7 @@ int main(int argc, const char** argv) {
             }
             // printf("%s %s\n", trc[i].address, trc[i].action);
             // printf("%d\n", table->length);
-            insert_table(table, trc[i].address, trc[i].action);
+            
             if (trc[i].action[0] == 'R') {
                 reads++;
             } else if (trc[i].action[0] == 'W') {
@@ -133,32 +142,21 @@ int main(int argc, const char** argv) {
                 str[10] = 0;
                 // printf("%s\n", str);
                 for (int j = 0; j < table->capacity; j++) {
-                    if (strncmp((char*)indexes + 10*j, trc[i].address, 8) == 0) {
+                    char temp_addr[9];
+                    strncpy(temp_addr, (char*)indexes + 11*j, 8);
+                    //printf("%s - %s\n", temp_addr, trc[i].address);
+                    if (strncmp(temp_addr, trc[i].address, 8) == 0) {
                         need_to_add = false;
                         // change to write so when we remove it we 
                         // also write to disc
                         if ((indexes + 10*j)[9] == 'W') {
                             str[9] = 'W';
                         }
-                        /*printf("~DANCE~ %s\n", str);
-                        for (int k = 0; k < 11*table->capacity; k++) {
-                            if (indexes[k] == 0) {
-                                printf("-");
-                            }
-                            printf("%c", indexes[k]);
-                        }
-                        printf("\n");*/
+                    
+                        // put back to last used position
                         memcpy((char*)indexes + 11, indexes, 11*j);
                         strncpy(indexes, str, 11);
-                        /*for (int k = 0; k < 11*table->capacity; k++) {
-                            if (indexes[k] == 0) {
-                                printf("-");
-                            }
-                            printf("%c", indexes[k]);
-                        }
-                        printf("\n");
-                        printf("~~~~~~\n");
-                        sleep(5);*/
+                       
                         break;
                         // printf("%s\n", str);
                     }
@@ -167,12 +165,32 @@ int main(int argc, const char** argv) {
                     if ((indexes + 10*(table->capacity-1))[0] != 0) {
                         // write to disc
                     }
+                    if (exists_table(table, trc[i].address) == false) {
+                        if (table->length >= table->capacity) {
+                            // remove one
+                            char temp_str[9] = {0};
+                            strncpy(temp_str, (char*)(indexes + 11*(table->capacity-1)), 8);
+                            // printf("(%d in %d) removing: %s ", table->length, table->capacity, temp_str);
+                            // printf("%s\n", exists_table(table, temp_str)?" - exists":" - does not exists");
+                            if (exists_table(table, temp_str) == false) {
+                                return 1;
+                            }
+                            remove_table(table, temp_str);
+                        }
+                        if (table->length >= table->capacity) {
+                            printf("Oops...\n");
+                            return 1;
+                        }
+                        insert_table(table, trc[i].address, trc[i].action);
+                    }
                     if (indexes[0] != 0) {
                         memcpy(indexes + 11, indexes, 11*(table->capacity-1));
                     }
                     memcpy(indexes, str, 10);
+                   
                     page_faults++;
                 }
+                    
             }
             if (--_max <= 0) {
                 break;
@@ -182,7 +200,7 @@ int main(int argc, const char** argv) {
             break;
         }
         memset(trc, 0, sizeof(trace)*atoi(q));
-    }
+    }*/
     do {
         //wait for children to finish
         if (waitpid(bzip_worker, &status_bzip_worker, WUNTRACED | WCONTINUED) == -1) {
@@ -196,28 +214,12 @@ int main(int argc, const char** argv) {
                 !WIFEXITED(status_gcc_worker) && !WIFSIGNALED(status_gcc_worker)
             );
 
-    free(indexes);
-    delete_table(table);
-    printf("Reads: %d\n", reads);
-    printf("Writes: %d\n", writes);
-    printf("Page faults: %d\n", page_faults);
     //destroy semaphores
-    if (sem_destroy(&smemory->mutex_0) != 0) {
-        printf("***Destroy 'mutex_0' Failed***\n");
+    if (sem_destroy(&smemory->edit_frames) != 0) {
+        printf("***Destroy Mutex Failed (edit_frames)***\n");
         return 1;
     }
-    if (sem_destroy(&smemory->mutex_1) != 0) {
-        printf("***Destroy 'mutex_1' Failed***\n");
-        return 1;
-    }
-    if (sem_destroy(&smemory->read) != 0) {
-        printf("***Destroy 'read' Failed***\n");
-        return 1;
-    }
-    if (sem_destroy(&smemory->can_write) != 0) {
-        printf("***Destroy 'can_write' Failed***\n");
-        return 1;
-    }
+   
     //destroy shared memory segment
     if (shmctl(shmid, IPC_RMID, 0) == -1) {
         printf("***Delete Shared Memory Failed***\n");
