@@ -8,13 +8,9 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <time.h>
-//#define DEBUG
-#define PROGRESS
 
-#if defined(DEBUG)
-// for debugging this is public
+bool PROGRESS = true;
 char filename[FILENAME_LENGTH] = {0};
-#endif
 
 unsigned int writes_to_disk = 0;
 unsigned int reads = 0;
@@ -39,9 +35,6 @@ int main(int argc, const char** argv) {
     sem_t *me = NULL, *them = NULL;
     hash_table* table = NULL;
     char algo[8] = {'L', 'R', 'U', 0, 0, 0, 0, 0};
-    #if !defined(DEBUG)
-    char filename[FILENAME_LENGTH] = {0};
-    #endif
 
     for (int i = 1; i < argc; i+=2) {
         if (strcmp(argv[i], "-F") == 0) {
@@ -74,13 +67,13 @@ int main(int argc, const char** argv) {
             strcpy(algo, argv[i+1]);
         }
     }
-    #if defined(PROGRESS)
-    // to print progress
-    lines_max = lines_in_file(filename);
-    if (max < lines_max) {
-        lines_max = max;
+    if (PROGRESS) {
+        // to print progress
+        lines_max = lines_in_file(filename);
+        if (max < lines_max) {
+            lines_max = max;
+        }
     }
-    #endif
     if (start == -1) {
         printf("Please provide a boolean indicator for the first and second process \
             using the '-start' flag, (eg. -start true, -start false)\n");
@@ -139,11 +132,11 @@ int main(int argc, const char** argv) {
     // divide 2 so that we read max/2 from each file = max
     // max /= 2;
     while ((read = getline(&line, &len, fp)) != -1) {
-        #if defined(PROGRESS)
-        if (count == 0 || count%(lines_max/100) == 0) {
-            printf("%s: (%d%%)\n", filename, count*100/lines_max);
+        if (PROGRESS) {
+            if (count == 0 || count%(lines_max/100) == 0) {
+                printf("%s: (%d%%)\n", filename, count*100/lines_max);
+            }
         }
-        #endif
         if (i >= q || max <= 0) {
             i = 0;
             // memcpy(smemory->trc, trc, sizeof(trace)*q);
@@ -157,10 +150,6 @@ int main(int argc, const char** argv) {
         }
         if (i == 0) {
             sem_wait(me);
-            #if defined(DEBUG)
-            printf("%s\n", filename);
-            sleep(0.5);
-            #endif
             if (pages_removed[0] != 0) {
                 // Some of my pages were removed
                 char str[PAGE_NAME] = {0};
@@ -188,10 +177,10 @@ int main(int argc, const char** argv) {
         // get page number and offset
         strncpy(page_num, addr, 5);
         strncpy(offset, addr+5, 3);
-        #if defined(DEBUG)
-        printf("%s: %s%s %c\n", filename, page_num, offset, tmp[0]);
-        #endif
         if (exists_table(table, page_num)) {
+            if (tmp[0] == 'W') {
+                update_to_w_table(table, page_num);
+            }
             if (strcmp(algo, "LRU") == 0) {
                 // update position
                 stack_push(stack, smemory->frames, page_num);
@@ -228,9 +217,9 @@ int main(int argc, const char** argv) {
         count++;
         max--;
     }
-    #if defined(PROGRESS)
-    printf("%s: (%d%%)\n", filename, count*100/lines_max);
-    #endif
+    if (PROGRESS) {
+        printf("%s: (%d%%)\n", filename, count*100/lines_max);
+    }
     sem_post(them);
     if (start == true) {
         strcpy(&smemory->filename_0[FILENAME_LENGTH], filename);
@@ -308,17 +297,10 @@ void stack_push(char* stack, int size, char* page) {
     }
     if (need_to_add) {
         // assume that their is space since I checked
-        if (false) {
-            // remove one
-            char temp_str[PAGE_NAME] = {0};
-            strncpy(temp_str, (char*)(stack + PAGE_NAME*(size-1)), PAGE_NAME-1);
-        }
         if (stack[0] != 0) {
             memcpy(stack + PAGE_NAME, stack, PAGE_NAME*(size-1));
         }
         memcpy(stack, page, PAGE_NAME-1);
-                   
-        // page_faults++;
     }
 }
 
@@ -327,26 +309,10 @@ int remove_page(const char* algo, char* array, unsigned int size, hash_table* ta
     int page_num = -1;
     if (strcmp(algo, "LRU") == 0) {
         // test remove first
-        #if defined(DEBUG)
-            printf("(%s) STACK: ", filename);
-            for (int j = 0; j < stack_size; j++) {
-                char temp_addr[PAGE_NAME] = {0};
-                strncpy(temp_addr, (char*)stack + PAGE_NAME*j, PAGE_NAME-1);
-                if (temp_addr[0] == 0) {
-                    break;
-                }
-                printf("%s ", temp_addr);
-            }
-            printf("\n");
-        #endif
         stack_pop(stack, stack_size, page_to_remove);
         if (page_to_remove[0] == 0) {
             printf("You should not be here...\n");
         }
-        #if defined(DEBUG)
-        printf("REMOVE: %s\n", page_to_remove);
-        printf("~~~~~~~~~~~~~~~\n");
-        #endif
     } else if (strcmp(algo, "schance") == 0) {
         // so array is the main memory and we now dont use tha stack var.
         // we will use stack for the bit needed in second chance
@@ -371,21 +337,18 @@ int remove_page(const char* algo, char* array, unsigned int size, hash_table* ta
         exit(-1);
     }
     for (int i = 0; i < size; i++) {
-        #if defined(DEBUG)
-        printf("(%s__%s)\n", page_to_remove, &array[i*PAGE_NAME]);
-        #endif
+        // find at what frame the page was
+        // I cannot find the frame from the hashtable since it could belong in the hash table of the other process
         if (strncmp(page_to_remove, &array[i*PAGE_NAME], PAGE_NAME-1) == 0) {
             page_num = i;
             break;
         }
     }
-    #if defined(DEBUG)
-    printf("\n");
-    #endif
     if (page_num < 0) {
         printf("ERROR: %s Page not found in main memory\n", page_to_remove);
         exit(-1);
     }
+    // is it mine or belongs to the other process
     if (exists_table(table, page_to_remove)) {
         if (remove_table(table, page_to_remove)) {
             writes_to_disk++;

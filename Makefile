@@ -3,9 +3,9 @@ SOURCE	= main.c worker.c structs.c
 HEADER	= structs.h
 OUT	= main
 CC	 = gcc
-FLAGS	 = -g -c # -Wall
+FLAGS	 = -g -c -Wall
 LFLAGS	 = -lpthread
-ARGS 	 = -q 314 -f 10 -a schance  # -max 10000000
+ARGS 	 = -q 314 -f 10 -a LRU
 
 all: $(OBJS) worker
 	$(CC) -g $(OBJS) -o $(OUT) $(LFLAGS)
@@ -30,5 +30,5 @@ run: $(OUT)
 
 valgrind: $(OUT)
 	valgrind --trace-children=yes --leak-check=full --show-leak-kinds=all ./$(OUT) $(ARGS)
-	# add full path to workers
+	# --trace-children=yes add full path to workers
 	

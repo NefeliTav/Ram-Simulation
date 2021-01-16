@@ -14,12 +14,19 @@ int main(int argc, const char** argv) {
     char q[10] = {0}; q[0] = '1';
     char max[10] = {0};
     strcpy(max, "-1");
-    int _max = -1;
     int frame = 5;
     shared_memory *smemory = NULL;
     int shmid = -1, status_bzip_worker, status_gcc_worker;
     pid_t bzip_worker, gcc_worker;
-    unsigned int reads = 0, writes = 0, page_faults = 0;
+    //https://stackoverflow.com/questions/298510/how-to-get-the-current-directory-in-a-c-program
+    char cwd[FILENAME_MAX];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        strcat(cwd, "/worker");
+        printf("Current working dir: %s\n", cwd);
+    } else {
+        printf("Could not get directory\n");
+        strcpy(cwd, "worker");
+    }
 
     // get command line arguments
     for (int i = 1; i < argc; i+=2) {
@@ -39,13 +46,12 @@ int main(int argc, const char** argv) {
         }
         else if (strcmp(argv[i], "-max") == 0) {
             strncpy(max, argv[i+1], 9);
-            _max = atoi(max);
         }
     }
     // shared_memory
-    // sizeof(char)*5*frame => sizeof(char)*5 = size of page_num, to get what frames are in main memory
-    // sizeof(char)*9*atoi(q) => sizeof(char)*PAGE_NAME = size of page_num, allocate q of these since in each iteration the max amount of traces added is q
-    // sizeof(char)*PAGE_NAME*frame => LRU stack
+    // sizeof(char)*PAGE_NAME*frame => sizeof(char)*5 = size of page_num, to get what frames are in main memory
+    // items removed // sizeof(char)*PAGE_NAME*atoi(q) => sizeof(char)*PAGE_NAME = size of page_num, allocate q of these since in each iteration the max amount of traces added is q
+    // sizeof(char)*PAGE_NAME*frame => LRU stack or bit array for Second Chance
     shmid = shmget(IPC_PRIVATE, sizeof(shared_memory) + sizeof(char)*(PAGE_NAME+1)*frame + sizeof(char)*(PAGE_NAME+1)*atoi(q) + sizeof(char)*(PAGE_NAME+1)*frame, IPC_CREAT | 0666); 
     if (shmid < 0) {
         printf("***Shared Memory Failed***\n");
@@ -105,7 +111,7 @@ int main(int argc, const char** argv) {
         return 1;
     } else if (bzip_worker == 0) {
         // child process
-        execl("worker", "worker", "-F", "./bzip.trace", "-q", q, "-s", shmid_str, "-start", "true", "-max", max, "-a", algo, (char *)NULL); 
+        execl(cwd, "worker", "-F", "./bzip.trace", "-q", q, "-s", shmid_str, "-start", "true", "-max", max, "-a", algo, (char *)NULL);  // frames are in shared memory
     }
 
     if ((gcc_worker = fork()) < 0) {
@@ -113,7 +119,7 @@ int main(int argc, const char** argv) {
         return 1;
     } else if (gcc_worker == 0) {
         // child process
-        execl("worker", "worker", "-F", "./gcc.trace", "-q", q, "-s", shmid_str, "-start", "false", "-max", max, "-a", algo, (char *)NULL); 
+        execl(cwd, "worker", "-F", "./gcc.trace", "-q", q, "-s", shmid_str, "-start", "false", "-max", max, "-a", algo, (char *)NULL); 
     }
 
     do {

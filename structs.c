@@ -143,6 +143,21 @@ hash_item* get_table(hash_table* table, const char* key) {
     return NULL;
 }
 
+void update_to_w_table(hash_table* table, const char* key) {
+    const int pos = _hash(key, table->size);
+    hash_list* list = &table->table[pos];
+    if (list->item.key == NULL) {
+        return;
+    }
+    while (strcmp(key, list->item.key) != 0 && list->next != NULL) {
+        list = list->next;
+    }
+    if (strcmp(key, list->item.key) == 0) {
+        list->item.action = 'W';
+    }
+    return;
+}
+
 /* private functions */
 
 int _hash(const char *str, const int size) {
@@ -150,7 +165,7 @@ int _hash(const char *str, const int size) {
     unsigned long hash = 7027;
     int c;
 
-    while (c = *str++) {
+    while ((c = *str++)) {
         hash = ((hash << 5) + hash) + c;
     }
     return (int)(hash % size);
