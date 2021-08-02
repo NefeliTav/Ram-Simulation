@@ -1,5 +1,6 @@
 # Ram Simulation
-The program simulates memory paging and the Page Replacement Algorithms used are LRU and Second Chance.
+The program simulates memory paging.
+The Page Replacement Algorithms used are LRU and Second Chance.
 
 ## Clean
 ```
